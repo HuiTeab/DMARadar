@@ -1,0 +1,170 @@
+﻿@page "/radar"
+@using System.Text.Json.Serialization
+@using System.Text.Json
+@using DMARadar.Misc
+@using DMARadar.Tarkov
+@rendermode InteractiveServer
+@inject IJSRuntime JS
+@inject IWebHostEnvironment Environment
+
+<PageTitle>Radar</PageTitle>
+
+@if (canSelectPlayer)
+{
+    <select @onchange="SelectPlayer">
+        @foreach (var player in players)
+        {
+            <option value="@player.Name">@player.Name</option>
+        }
+    </select>
+}
+
+
+<div>
+    <input type="range" min="50" max="300" value="@zoomLevel" @oninput="HandleZoomChange" style="width: 100%;" />
+    <canvas id="imageCanvas" class="full-size-canvas"></canvas>
+</div>
+
+@code {
+    private int zoomLevel = 100; // Default zoom level set to 100%
+    private string selectedMap = "/Maps/Customs1f.jpg"; // Default selection
+    private string? gamePositionJson;
+    private readonly List<Map> _maps = new(); // Contains all maps from \\Maps folder
+    private Map? _selectedMap;
+    private CancellationTokenSource _cts = new CancellationTokenSource();
+
+    private bool canSelectPlayer = false;
+    private List<Player> players = new List<Player>(); // List of all players
+    private Player? selectedPlayer; // Currently selected player
+
+
+    private void SelectPlayer(ChangeEventArgs e)
+    {
+        string playerName = e.Value.ToString();
+        selectedPlayer = players.FirstOrDefault(p => p.Name == playerName);
+        if (selectedPlayer != null)
+        {
+            // Optionally, update the radar or other component parts
+            // For example, center on selected player, update details panel, etc.
+        }
+    }
+
+
+    private async Task HandleZoomChange(ChangeEventArgs e)
+    {
+        zoomLevel = int.Parse(e.Value.ToString());
+        float scale = zoomLevel / 100.0f; // Convert percentage to scale factor
+        await JS.InvokeVoidAsync("updateZoomLevel", "imageCanvas", scale);
+        var imageSize = await GetImageSizeAsync();
+    }
+
+
+    private Player LocalPlayer
+    {
+        get =>
+            Memory.Players?.FirstOrDefault(x => x.Value.Type is PlayerType.LocalPlayer).Value;
+    }
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadMaps();
+
+    }
+
+    private async Task<(int width, int height)> GetImageSizeAsync()
+    {
+        var imageSize = await JS.InvokeAsync<object>("getImageSize", "imageCanvas");
+        var size = JsonSerializer.Deserialize<Dictionary<string, int>>(imageSize.ToString());
+        return (size["width"], size["height"]);
+    }
+
+
+    private async Task LoadMaps()
+    {
+        var dir = new DirectoryInfo(Path.Combine(Environment.WebRootPath, "Maps"));
+        if (!dir.Exists)
+            dir.Create();
+
+        var configs = dir.GetFiles("*.json");
+        if (configs.Length == 0)
+            throw new IOException("No .json map configs found!");
+
+        foreach (var config in configs)
+        {
+            var name = Path.GetFileNameWithoutExtension(config.Name);
+            var mapConfig = MapConfig.LoadFromFile(config.FullName);
+            var mapID = mapConfig.MapID[0];
+            var map = new Map(name.ToUpper(), mapConfig, config.FullName, mapID);
+            _maps.Add(map);
+        }
+        _selectedMap = _maps[0];
+    }
+
+    private async Task UpdateLocation()
+    {
+        while (!_cts.IsCancellationRequested)
+        {
+            await Task.Delay(100); // Adjust delay as needed
+            if (LocalPlayer != null)
+            {
+                var currentMapName = Memory._game.MapName.ToLower();
+                if (currentMapName != _selectedMap.MapID.ToLower())
+                {
+                    _selectedMap = _maps.FirstOrDefault(x => x.MapID == currentMapName);
+                    if (_selectedMap != null)
+                    {
+                        // Reinitialize the canvas with the new map image
+                        await JS.InvokeVoidAsync("initializeCanvas", _selectedMap.ConfigFile.MapLayers[0].Filename, "imageCanvas");
+                    }
+                }
+                var playerDrawList = new List<object>();
+                foreach (var player in Memory.Players)
+                {
+                    if (player.Value.Type is PlayerType.LocalPlayer && selectedPlayer is null)
+                    {
+                        players = Memory.Players.Select(x => x.Value).ToList();
+                        canSelectPlayer = true;
+                        StateHasChanged();
+                        var localPlayerPos = player.Value.Position;
+                        var localPlayerMapPos = localPlayerPos.ToMapPos(_selectedMap);
+                        var localPlayerRotation = Extensions.ToRadians(player.Value.Rotation.X);
+                        await JS.InvokeVoidAsync("updatePlayerLocation", "imageCanvas", localPlayerMapPos.X, localPlayerMapPos.Y, localPlayerRotation);
+                        continue;
+                    }
+                    else if (selectedPlayer != null)
+                    {
+                        var selectedPlayerPos = selectedPlayer.Position;
+                        var selectedPlayerMapPos = selectedPlayerPos.ToMapPos(_selectedMap);
+                        var selectedPlayerRotation = Extensions.ToRadians(selectedPlayer.Rotation.X);
+                        await JS.InvokeVoidAsync("updatePlayerLocation", "imageCanvas", selectedPlayerMapPos.X, selectedPlayerMapPos.Y, selectedPlayerRotation);
+                    }
+                    var playerMapPos = player.Value.Position.ToMapPos(_selectedMap);
+                    var playerRotation = Extensions.ToRadians(player.Value.Rotation.X);
+                    var playerDrawData = new { x = playerMapPos.X, y = playerMapPos.Y, r = playerRotation};
+                    playerDrawList.Add(playerDrawData);
+                }
+                await JS.InvokeVoidAsync("updatePlayerLocations", "imageCanvas", playerDrawList);
+
+            }
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            float initialScale = zoomLevel / 100.0f;
+            await JS.InvokeVoidAsync("initializeCanvas", _selectedMap.ConfigFile.MapLayers[0].Filename, "imageCanvas");
+            await JS.InvokeVoidAsync("updateZoomLevel", "imageCanvas", initialScale);
+            _ = UpdateLocation(); // Fire and forget, but controlled by cancellation token
+        }
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+
+
+}
+

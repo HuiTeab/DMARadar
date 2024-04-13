@@ -1,0 +1,90 @@
+﻿@page "/Tester"
+@using System.Text.Json.Serialization
+@using System.Text.Json
+@using DMARadar.Misc
+@rendermode InteractiveServer
+@inject IJSRuntime JS
+<PageTitle>Tester</PageTitle>
+
+<h1>Tester</h1>
+
+<p>Is Tarkov Running: @isTarkovRunning</p>
+@if (isTarkovRunning)
+{
+    <p>Players: @playerCount</p>
+}
+
+<button class="btn btn-secondary" @onclick="ToggleLoop">@loopButtonText</button>
+<input type="range" min="25" max="300" value="@loopDelay" @oninput="UpdateLoopDelay" step="25" class="slider" />
+
+@code {
+    private bool isTarkovRunning = false;
+    private int playerCount = 0;
+    private int loopDelay = 75; // Default loop delay
+    private bool loopRunning = false;
+    private string loopButtonText = "Start Loop";
+    private System.Threading.Timer? timer;
+
+    private bool tarkovRunning()
+    {
+        Memory.Init();
+        return Memory.GetEFTPID() && Memory.GetModuleBase();
+    }
+
+    private void Loop()
+    {
+        if (!isTarkovRunning)
+        {
+            loopButtonText = "Start Loop";
+            isTarkovRunning = tarkovRunning();
+            StateHasChanged();
+            Memory._game = new Game(Memory._unityBase);
+            Memory._game.GetLGW();
+            return;
+        }
+        if (Memory._game == null)
+        {
+            Memory._game = new Game(Memory._unityBase);
+            Memory._game.GetLGW();
+            //DMA._game.WaitForGame();
+        }
+        else
+        {
+            Memory._game.GameLoop();
+            loopButtonText = "Stop Loop";
+            StateHasChanged();
+        }
+    }
+
+    private void ToggleLoop()
+    {
+        if (loopRunning)
+        {
+            timer?.Change(Timeout.Infinite, 0);
+            loopRunning = false;
+            loopButtonText = "Start Loop";
+        }
+        else
+        {
+            timer = new System.Threading.Timer(
+                e => InvokeAsync(Loop),
+                null,
+                0,
+                loopDelay);
+            loopRunning = true;
+            loopButtonText = "Stop Loop";
+        }
+    }
+
+    private void UpdateLoopDelay(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int newDelay))
+        {
+            loopDelay = newDelay;
+            if (loopRunning)
+            {
+                timer?.Change(0, loopDelay);
+            }
+        }
+    }
+}
