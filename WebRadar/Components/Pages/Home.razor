@@ -1,0 +1,95 @@
+﻿@page "/"
+@using System.Collections.ObjectModel
+@using System.Numerics
+@rendermode InteractiveServer
+@inject IJSRuntime JS
+@inject IWebHostEnvironment Environment
+
+<PageTitle>Home</PageTitle>
+
+<div id="controlPanel">
+    <label for="xOffset">X Offset:</label>
+    <input type="number" @bind="mapX" step="0.1">
+
+    <label for="yOffset">Y Offset:</label>
+    <input type="number" @bind="mapY" step="0.1">
+
+    <label for="scale">Scale:</label>
+    <input type="number" @bind="mapScale" step="0.1">
+
+    <button @onclick="UpdateMap">Update Map</button>
+</div>
+
+<div id="tarkovmap" class="leaflet-container leaflet-touch leaflet-fade-anim leaflet-grab leaflet-touch-drag leaflet-touch-zoom" tabindex="0" style="height: 100vh; position: relative; outline-style: none;"> </div>
+
+@code {
+    private double mapX = -169.5;
+    private double mapY = -1040.2;
+    private double mapScale = 4.2;
+    private bool _continueChecking = true;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            Memory.Initialize();
+            await JS.InvokeVoidAsync("initializeMap");
+
+            // Start the asynchronous loop to check for LocalPlayer
+            _ = CheckLocalPlayerAsync();
+        }
+    }
+
+    private async Task CheckLocalPlayerAsync()
+    {
+        while (_continueChecking)
+        {
+            try
+            {
+                var localPlayer = Memory.LocalPlayer; //should cache this
+                if (localPlayer != null)
+                {
+                    var allPlayers = Memory.Players;
+                    await JS.InvokeVoidAsync("updateLocalPlayerMarker", localPlayer.Position.X, localPlayer.Position.Y);
+
+                    foreach (var player in allPlayers)
+                    {
+                        var otherPlayer = player.Value;
+                        if (otherPlayer.Type == PlayerType.AIScav)
+                        {
+                            var dist = Vector3.Distance(localPlayer.Position, otherPlayer.Position);
+                            await JS.InvokeVoidAsync("drawMarkerAt", otherPlayer.Position.X, otherPlayer.Position.Y, otherPlayer.Name, otherPlayer.Base, dist);
+                        }
+                    }
+
+
+                }
+
+
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error while checking player: {ex.Message}");
+                // Handle or log the error as needed
+            }
+            await Task.Delay(25); // Wait for 5 seconds before checking again
+        }
+    }
+    private async Task UpdateMap()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("updateMap", mapX, mapY, mapScale);
+
+        }
+        catch (JSDisconnectedException)
+        {
+            // Handle the exception or log it.
+        }
+    }
+
+    public void Dispose()
+    {
+        _continueChecking = false; // This will stop the loop when the component is disposed
+    }
+}

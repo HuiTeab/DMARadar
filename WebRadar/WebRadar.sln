@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.8.34309.116
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebRadar", "WebRadar.csproj", "{647AC814-0E4A-4A0E-92EE-EB785669AF66}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{647AC814-0E4A-4A0E-92EE-EB785669AF66}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{647AC814-0E4A-4A0E-92EE-EB785669AF66}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{647AC814-0E4A-4A0E-92EE-EB785669AF66}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{647AC814-0E4A-4A0E-92EE-EB785669AF66}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {3332308F-6BCB-460E-9CD1-9461B38F216E}
+	EndGlobalSection
+EndGlobal
